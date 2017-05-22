@@ -99,6 +99,7 @@ def new_stimulus(spec):
         scene.objects.link(ob_new)
         blocks.append(ob_new)
 
+    # add physics for all the blocks
     for block in blocks:
         bpy.ops.object.select_all(action='DESELECT')
         block.select = True
@@ -109,10 +110,10 @@ def new_stimulus(spec):
 
         body.mass = spec[name]["mass"]
         body.friction = spec[name]["friction"]
-        body.restitution = np.sqrt(spec[name]["restitution"])
+        body.restitution = spec[name]["restitution"]
         body.use_deactivation = True
         body.linear_damping = 0.1
-        body.angular_damping = 0.9
+        body.angular_damping = 0.5
         body.collision_shape = "BOX"
 
     return blocks
@@ -141,13 +142,6 @@ def apply_colors(blocks, seed=None):
         material.specular_shader = 'WARDISO'
         material.ambient = 0
         block.data.materials.append(material)
-
-        # # create the texture
-        # slot = material.texture_slots.add()
-        # slot.texture = tex
-        # slot.texture_coords = "ORCO"
-        # slot.mapping = "CUBE"
-        # slot.blend_type = "LINEAR_LIGHT"
 
 def look_at(obj, point):
     direction = Vector(point) - obj.location
@@ -217,8 +211,7 @@ def setup_world():
     # create and position the lights
     new_point_lamp('Lamp1', 2, camera.location)
     new_point_lamp('Lamp2', 4, (1.75, -4, 11.5))
-    new_point_lamp('Lamp3', 1, (-8, 0, 5))
-    new_spotlight('Lamp4', 2, (4, -4, 10), (0, 0, 1.5))
+    new_spotlight('Lamp3', 2, (8, -8, 10), (0, 0, 1.5))
 
     # add environment lighting
     world = bpy.data.worlds["World"]
@@ -234,7 +227,7 @@ def setup_world():
 
     # setup render properties
     scene = bpy.data.scenes["Scene"]
-    scene.frame_end = 48
+    scene.frame_end = 120
     scene.render.resolution_x = 800
     scene.render.resolution_y = 600
     scene.render.resolution_percentage = 100
@@ -244,7 +237,7 @@ def setup_world():
     scene = bpy.data.scenes["Scene"]
     scene.gravity = (0, 0, -98.1)
     physics = scene.rigidbody_world
-    physics.steps_per_second = 100
+    physics.steps_per_second = 1000
     physics.solver_iterations = 100
 
 
@@ -258,7 +251,8 @@ def render(stim_id):
 
 # create the tower
 stims = pd.read_csv("stimuli/willitfall.csv")
-for stim_id in stims["name"].unique():
+names = stims["name"].unique()
+for stim_id in names:
     print(stim_id)
 
     spec = stims\
