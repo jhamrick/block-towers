@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 import hashlib
 import colorsys
+import os
 
 from mathutils import Vector
 
@@ -241,30 +242,43 @@ def setup_world():
     physics.solver_iterations = 100
 
 
-def render(dataset, stim_id):
+def render(filepath):
     scene = bpy.data.scenes["Scene"]
-    scene.render.filepath = "render/frames/{}/{}/".format(dataset, stim_id)
+    scene.render.filepath = filepath
     bpy.ops.ptcache.free_bake_all()
     bpy.ops.ptcache.bake_all(bake=True)
     bpy.ops.render.render(animation=True)
 
 
-# create the tower
-dataset = "willitfall"
-stims = pd.read_csv("stimuli/{}.csv".format(dataset))
-names = stims["name"].unique()
-for stim_id in names:
-    print(stim_id)
+datasets = {
+    "whichdirection-sameheight": "colors",
+    "whichdirection": "colors",
+    "willitfall": "colors",
+    "willitfall-sameheight": "colors"
+}
 
-    spec = stims\
-        .query("name == '{}'".format(stim_id))\
-        .set_index("object").T\
-        .to_dict()
+for dataset in sorted(datasets.keys()):
+    stims = pd.read_csv("stimuli/{}.csv".format(dataset))
+    names = stims["name"].unique()
 
-    setup_world()
-    blocks = new_stimulus(spec)
+    for stim_id in names:
+        print(stim_id)
+        filepath = "render/frames/{}/{}/".format(dataset, stim_id)
+        if os.path.exists(filepath):
+            continue
 
-    seed = int(str(int(hashlib.md5(stim_id.encode()).hexdigest(), base=16))[:9])
-    apply_colors(blocks, seed=seed)
+        spec = stims\
+            .query("name == '{}'".format(stim_id))\
+            .set_index("object").T\
+            .to_dict()
 
-    render(dataset, stim_id)
+        seed = int(str(int(hashlib.md5(stim_id.encode()).hexdigest(), base=16))[:9])
+
+        setup_world()
+        blocks = new_stimulus(spec)
+        if datasets[dataset] == "colors":
+            apply_colors(blocks, seed=seed)
+        else:
+            raise ValueError("unhandled dataset type: {}".format(dataset[dataset]))
+
+        render(filepath)
