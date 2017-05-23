@@ -43,12 +43,10 @@ def new_floor():
     floor.select = False
 
     # set physical properties
-    body.mass = 0.0
     body.friction = 0.89442718029
     body.restitution = 0.0
-    body.linear_damping = 0
-    body.angular_damping = 0
     body.collision_shape = "BOX"
+    body.type = "PASSIVE"
 
     # select the floor
     scene.objects.active = floor
@@ -112,9 +110,9 @@ def new_stimulus(spec):
         body.mass = spec[name]["mass"]
         body.friction = spec[name]["friction"]
         body.restitution = spec[name]["restitution"]
-        body.use_deactivation = True
+        body.use_deactivation = False
         body.linear_damping = 0.1
-        body.angular_damping = 0.75
+        body.angular_damping = 0.9
         body.collision_shape = "BOX"
 
     return blocks
@@ -129,10 +127,6 @@ def apply_colors(blocks, seed=None):
     def get_color():
         return np.array(colorsys.hsv_to_rgb(rso.rand(), 1, 1))
 
-    image = bpy.data.images.load("resources/wood.jpg")
-    tex = bpy.data.textures.new(name="wood_texture", type="IMAGE")
-    tex.image = image
-
     for block in blocks:
         # set the material properties to something plastic-y
         material = bpy.data.materials.new(name="{}_material".format(block.name))
@@ -143,6 +137,96 @@ def apply_colors(blocks, seed=None):
         material.specular_shader = 'WARDISO'
         material.ambient = 0
         block.data.materials.append(material)
+
+
+def apply_redblue(blocks, blocktypes, seed=None):
+    if seed:
+        rso = np.random.RandomState(seed)
+    else:
+        rso = np.random
+
+    def get_rgb(color, rso):
+        """Add a little bit of variation to the saturation and
+        value channels"""
+        r = int(color[1:3], base=16) / 255.
+        g = int(color[3:5], base=16) / 255.
+        b = int(color[5:7], base=16) / 255.
+        h, s, v = colorsys.rgb_to_hsv(r, g, b)
+        if s > 0:
+            s = max(0, min(1, s + rso.randn() / 8.))
+        v = max(0, min(1, v + rso.randn() / 8.))
+        r, g, b = colorsys.hsv_to_rgb(h, s, v)
+        return (r, g, b)
+
+    for block, blocktype in zip(blocks, blocktypes):
+        # set the material properties to something plastic-y
+        material = bpy.data.materials.new(name="{}_material".format(block.name))
+        material.diffuse_intensity = 0.8
+        material.specular_color = (0.5, 0.5, 0.5)
+        material.specular_intensity = 0.1
+        material.specular_shader = 'WARDISO'
+        material.ambient = 0
+
+        if blocktype == 0:
+            material.diffuse_color = get_rgb("#CA0020", rso)
+        else:
+            material.diffuse_color = get_rgb("#0571B0", rso)
+
+        block.data.materials.append(material)
+
+
+def apply_stoneplastic(blocks, blocktypes, seed=None):
+    if seed:
+        rso = np.random.RandomState(seed)
+    else:
+        rso = np.random
+
+    lcscale = 0.1
+    hcscale = 0.1
+    clip = lambda x: np.clip(x, 0, 1)
+
+    plastic_image = bpy.data.images.load("resources/stripes.png")
+    plastic_tex = bpy.data.textures.new(name="plastic_texture", type="IMAGE")
+    plastic_tex.image = plastic_image
+
+    stone_image = bpy.data.images.load("resources/granite-grayscale.jpg")
+    stone_tex = bpy.data.textures.new(name="stone_texture", type="IMAGE")
+    stone_tex.image = stone_image
+
+    for block, blocktype in zip(blocks, blocktypes):
+        material = bpy.data.materials.new(name="{}_material".format(block.name))
+        material.diffuse_intensity = 0.8
+
+        slot = material.texture_slots.add()
+        slot.texture_coords = "ORCO"
+        slot.mapping = "CUBE"
+        slot.blend_type = "MULTIPLY"
+
+        r = rso.randn() * lcscale / 2.0
+        if blocktype == 0:
+            slot.texture = plastic_tex
+            slot.scale = (0.5, 0.5, 0.5)
+            material.diffuse_color = np.array([
+                clip(.3 + r),
+                clip(1. + rso.randn() * lcscale / 2. + r),
+                clip(.65 + rso.randn() * lcscale / 2. + r),
+            ])
+            material.specular_color = (0.5, 0.5, 0.5)
+            material.specular_intensity = 0.1
+
+        elif blocktype == 1:
+            slot.texture = stone_tex
+            slot.scale = (0.575, 0.575, 0.575)
+            material.diffuse_color = np.array([
+                clip(.65 + rso.randn() * hcscale / 2. + r),
+                clip(.65 + r),
+                clip(.65 + rso.randn() * hcscale / 2. + r)
+            ])
+            material.specular_color = (0, 0, 0)
+            material.specular_intensity = 0
+
+        block.data.materials.append(material)
+
 
 def look_at(obj, point):
     direction = Vector(point) - obj.location
@@ -240,6 +324,7 @@ def setup_world():
     physics = scene.rigidbody_world
     physics.steps_per_second = 1000
     physics.solver_iterations = 100
+    physics.time_scale = 1
 
 
 def render(filepath):
@@ -253,8 +338,12 @@ def render(filepath):
 datasets = {
     "whichdirection-sameheight": "colors",
     "whichdirection": "colors",
+    "whichdirection-mass": "stoneplastic",
     "willitfall": "colors",
-    "willitfall-sameheight": "colors"
+    "willitfall-sameheight": "colors",
+    "willitfall-mass": "stoneplastic",
+    "whichisheavier-experimental": "redblue",
+    "whichisheavier-training": "redblue"
 }
 
 for dataset in sorted(datasets.keys()):
@@ -262,23 +351,29 @@ for dataset in sorted(datasets.keys()):
     names = stims["name"].unique()
 
     for stim_id in names:
-        print(stim_id)
-        filepath = "render/frames/{}/{}/".format(dataset, stim_id)
-        if os.path.exists(filepath):
-            continue
+        ratios = stims.query("name == '{}'".format(stim_id))["ratio"].unique()
 
-        spec = stims\
-            .query("name == '{}'".format(stim_id))\
-            .set_index("object").T\
-            .to_dict()
+        for ratio in ratios:
+            print((stim_id, ratio))
+            filepath = "render/frames/{}/{}_ratio{}/".format(dataset, stim_id, ratio)
+            if os.path.exists(filepath):
+                continue
 
-        seed = int(str(int(hashlib.md5(stim_id.encode()).hexdigest(), base=16))[:9])
+            spec = stims\
+                .query("name == '{}' and ratio == {}".format(stim_id, ratio))\
+                .set_index("object")\
+                .sort_index(level="object")
+            seed = int(str(int(hashlib.md5(stim_id.encode()).hexdigest(), base=16))[:9])
 
-        setup_world()
-        blocks = new_stimulus(spec)
-        if datasets[dataset] == "colors":
-            apply_colors(blocks, seed=seed)
-        else:
-            raise ValueError("unhandled dataset type: {}".format(dataset[dataset]))
+            setup_world()
+            blocks = new_stimulus(spec.T.to_dict())
+            if datasets[dataset] == "colors":
+                apply_colors(blocks, seed=seed)
+            elif datasets[dataset] == "stoneplastic":
+                apply_stoneplastic(blocks, list(spec["blocktype"]), seed=seed)
+            elif datasets[dataset] == "redblue":
+                apply_redblue(blocks, list(spec["blocktype"]), seed=seed)
+            else:
+                raise ValueError("unhandled dataset type: {}".format(dataset[dataset]))
 
-        render(filepath)
+            render(filepath)
