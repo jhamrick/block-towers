@@ -113,7 +113,7 @@ def new_stimulus(spec):
         body.restitution = spec[name]["restitution"]
         body.use_deactivation = True
         body.linear_damping = 0.1
-        body.angular_damping = 0.5
+        body.angular_damping = 0.75
         body.collision_shape = "BOX"
 
     return blocks
@@ -231,7 +231,7 @@ def setup_world():
     scene.render.resolution_x = 800
     scene.render.resolution_y = 600
     scene.render.resolution_percentage = 100
-    scene.render.image_settings.compression = 0
+    scene.render.image_settings.compression = 15
 
     # physics settings
     scene = bpy.data.scenes["Scene"]
@@ -241,16 +241,17 @@ def setup_world():
     physics.solver_iterations = 100
 
 
-def render(stim_id):
+def render(dataset, stim_id):
     scene = bpy.data.scenes["Scene"]
-    scene.render.filepath = "render/{}/".format(stim_id)
+    scene.render.filepath = "render/frames/{}/{}/".format(dataset, stim_id)
     bpy.ops.ptcache.free_bake_all()
     bpy.ops.ptcache.bake_all(bake=True)
     bpy.ops.render.render(animation=True)
 
 
 # create the tower
-stims = pd.read_csv("stimuli/willitfall.csv")
+dataset = "willitfall"
+stims = pd.read_csv("stimuli/{}.csv".format(dataset))
 names = stims["name"].unique()
 for stim_id in names:
     print(stim_id)
@@ -266,4 +267,4 @@ for stim_id in names:
     seed = int(str(int(hashlib.md5(stim_id.encode()).hexdigest(), base=16))[:9])
     apply_colors(blocks, seed=seed)
 
-    render(stim_id)
+    render(dataset, stim_id)
